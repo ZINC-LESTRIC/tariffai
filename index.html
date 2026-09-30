@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TariffAI — Pakistan Customs HS Code Classifier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #050510;
+      --primary: #7B6EF6;
+      --secondary: #4FC3F7;
+      --text: #F0EEF8;
+      --text-muted: #A8A4C0;
+      --card: rgba(255, 255, 255, 0.04);
+      --card-border: rgba(255, 255, 255, 0.08);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+    #bg-canvas {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none;
+    }
+    .app {
+      position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 3rem 1.25rem 4rem;
+    }
+    .hero {
+      text-align: center; margin-bottom: 2.75rem; max-width: 800px; opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+    }
+    .hero h1 {
+      font-size: clamp(2.6rem, 6vw, 3.8rem); font-weight: 600; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #7B6EF6 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      margin-bottom: 0.75rem;
+    }
+    .hero p {
+      font-size: 1.05rem; color: var(--text-muted); font-weight: 400; letter-spacing: 0.02em;
+    }
+    .classifier-card {
+      width: 100%; max-width: 640px; background: var(--card); border: 1px solid var(--card-border);
+      border-radius: 20px; padding: 1.75rem; backdrop-filter: blur(20px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+      opacity: 0; animation: fadeUp 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
+    }
+    textarea {
+      width: 100%; min-height: 110px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 1rem 1.1rem; color: var(--text); font-family: inherit; font-size: 1rem;
+      resize: vertical; outline: none; transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: var(--primary); }
+    textarea::placeholder { color: rgba(168,164,192,0.6); }
+    .card-footer {
+      display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; gap: 1rem; flex-wrap: wrap;
+    }
+    .hint { font-size: 0.8rem; color: var(--text-muted); }
+    .btn {
+      background: linear-gradient(135deg, #7B6EF6, #5B4FDB); color: white; border: none; border-radius: 12px;
+      padding: 0.75rem 1.5rem; font-family: inherit; font-size: 0.95rem; font-weight: 500; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s; white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(123,110,246,0.4); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn.loading { position: relative; color: transparent; }
+    .btn.loading::after {
+      content: ''; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .status {
+      margin-top: 1.25rem; padding: 0.85rem 1rem; border-radius: 10px; font-size: 0.9rem; display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: rgba(123,110,246,0.12); color: #c4b5fd; }
+    .status.error { background: rgba(239,68,68,0.12); color: #fca5a5; }
+    .status.loading { background: rgba(79,195,247,0.1); color: #7dd3fc; }
+    .results { width: 100%; max-width: 640px; margin-top: 2rem; }
+    .results-header { font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-muted); opacity: 0; }
+    .result-card {
+      background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; padding: 1.25rem 1.4rem;
+      margin-bottom: 0.85rem; opacity: 0; transform: translateY(12px);
+      animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .result-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.6rem; }
+    .code { font-size: 1.35rem; font-weight: 600; letter-spacing: 0.03em; color: #c4b5fd; }
+    .confidence-bar { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; margin: 0.5rem 0; }
+    .confidence-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); border-radius: 2px; width: 0; transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+    .meta { font-size: 0.85rem; color: var(--text-muted); display: flex; gap: 1.25rem; flex-wrap: wrap; }
+    .notes { margin-top: 0.6rem; font-size: 0.9rem; color: rgba(240,238,248,0.75); line-height: 1.45; }
+    .footer-note {
+      margin-top: auto; padding-top: 3rem; text-align: center; font-size: 0.75rem; color: rgba(168,164,192,0.5);
+      max-width: 520px; line-height: 1.5;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+  <div class="app">
+    <div class="hero">
+      <h1>TariffAI</h1>
+      <p>Pakistan Customs HS Code Classifier — Powered by AI</p>
+    </div>
+    <div class="classifier-card">
+      <textarea id="description" placeholder="Describe the product... e.g. leather football size 5 or chamray k dastany or polyester men's shirt" rows="4"></textarea>
+      <div class="card-footer">
+        <span class="hint">English or Roman Urdu accepted</span>
+        <button class="btn" id="classifyBtn">Classify HS Code</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+    <div class="results" id="results"></div>
+    <p class="footer-note">Classifications are AI-generated estimates based on the Harmonized System and Pakistan Customs Tariff structure. Always verify final codes with the official Pakistan Customs Tariff and a licensed customs agent before filing.</p>
+  </div>
+  <script>
+    // Particle background
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize); resize();
+    for (let i = 0; i < 60; i++) {
+      particles.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, r: Math.random()*1.5+0.5, vx: (Math.random()-0.5)*0.3, vy: (Math.random()-0.5)*0.3 });
+    }
+    function draw() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      particles.forEach((p,i) => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle = 'rgba(123,110,246,0.35)'; ctx.fill();
+        for (let j = i+1; j < particles.length; j++) {
+          const q = particles[j]; const dx = p.x-q.x, dy = p.y-q.y, d = Math.sqrt(dx*dx+dy*dy);
+          if (d < 120) { ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.strokeStyle = `rgba(123,110,246,${0.12*(1-d/120)})`; ctx.stroke(); }
+        }
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+
+    const descriptionEl = document.getElementById('description');
+    const classifyBtn = document.getElementById('classifyBtn');
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+
+    function showStatus(msg, isError = false, isLoading = false) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status show ' + (isError ? 'error' : isLoading ? 'loading' : 'info');
+    }
+    function hideStatus() { statusEl.className = 'status'; }
+
+    classifyBtn.addEventListener('click', async () => {
+      const description = descriptionEl.value.trim();
+      if (!description) { showStatus('Please enter a product description.', true); return; }
+      resultsEl.innerHTML = '';
+      classifyBtn.disabled = true; classifyBtn.classList.add('loading');
+      showStatus('Classifying with Gemini Flash…', false, true);
+      try {
+        const response = await fetch('/api/classify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Server error ${response.status}`);
+        if (!data.results || !Array.isArray(data.results) || data.results.length === 0) throw new Error('No classification results returned.');
+        hideStatus(); renderResults(data.results, description);
+      } catch (err) {
+        console.error(err); showStatus(err.message || 'Classification failed. Please try again.', true);
+      } finally {
+        classifyBtn.disabled = false; classifyBtn.classList.remove('loading');
+      }
+    });
+
+    function renderResults(results, query) {
+      resultsEl.innerHTML = `<div class="results-header">Results for “${escapeHtml(query)}”</div>`;
+      results.forEach((r, index) => {
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.style.animationDelay = `${index * 0.1}s`;
+        const conf = Math.min(100, Math.max(0, Number(r.confidence) || 0));
+        card.innerHTML = `
+          <div class="result-top">
+            <div class="code">${escapeHtml(r.code || '—')}</div>
+            <div class="meta"><span>${conf}% confidence</span>${r.duty_rate ? `<span>Duty ~ ${escapeHtml(r.duty_rate)}</span>` : ''}</div>
+          </div>
+          <div class="confidence-bar"><div class="confidence-fill" data-width="${conf}%"></div></div>
+          <div style="font-size:0.95rem;margin-top:0.3rem;">${escapeHtml(r.description || '')}</div>
+          ${r.notes ? `<div class="notes">${escapeHtml(r.notes)}</div>` : ''}
+        `;
+        resultsEl.appendChild(card);
+        setTimeout(() => { const fill = card.querySelector('.confidence-fill'); if (fill) fill.style.width = fill.dataset.width; }, 180 + index * 120);
+      });
+    }
+    function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+  </script>
+</body></html>
